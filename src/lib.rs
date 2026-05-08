@@ -1,6 +1,7 @@
 use std::{
+    collections::HashSet,
     io,
-    path::{Path, PathBuf},
+    path::PathBuf,
     sync::{
         Mutex,
         mpsc::{Receiver, RecvTimeoutError},
@@ -117,7 +118,7 @@ fn spawn_empty_watcher() -> FFIValue {
 
     let watcher = notify::recommended_watcher(move |event: Result<Event, _>| {
         if let Ok(event) = event {
-            if let notify::EventKind::Modify(_) = &event.kind {
+            if is_reload_event(&event) {
                 sender.send(event).unwrap();
             }
         }
@@ -137,7 +138,7 @@ fn watch_recursive(path: String) -> FFIValue {
 
     let mut watcher = notify::recommended_watcher(move |event: Result<Event, _>| {
         if let Ok(event) = event {
-            if let notify::EventKind::Modify(_) = &event.kind {
+            if is_reload_event(&event) {
                 sender.send(event).unwrap();
             }
         }
@@ -161,17 +162,21 @@ fn watch_file_list(paths: Vec<String>) -> FFIValue {
 
     let mut watcher = notify::recommended_watcher(move |event: Result<Event, _>| {
         if let Ok(event) = event {
-            if let notify::EventKind::Modify(_) = &event.kind {
+            if is_reload_event(&event) {
                 sender.send(event).unwrap();
             }
         }
     })
     .unwrap();
 
+    let mut watched_dirs = HashSet::new();
     for path in paths {
-        watcher
-            .watch(&PathBuf::from(path), RecursiveMode::NonRecursive)
-            .ok();
+        let path = PathBuf::from(path);
+        if let Some(parent) = path.parent() {
+            if watched_dirs.insert(parent.to_path_buf()) {
+                watcher.watch(parent, RecursiveMode::NonRecursive).ok();
+            }
+        }
     }
 
     EventReceiver {
@@ -180,6 +185,13 @@ fn watch_file_list(paths: Vec<String>) -> FFIValue {
     }
     .into_ffi_val()
     .unwrap()
+}
+
+fn is_reload_event(event: &Event) -> bool {
+    matches!(
+        event.kind,
+        notify::EventKind::Create(_) | notify::EventKind::Modify(_)
+    )
 }
 
 pub fn build_module() -> FFIModule {
