@@ -3,6 +3,7 @@
     event-paths
     make-empty-watcher
     receive-event!
+    receive-event-timeout!
     unwatch-file!
     watch-file!
     watch-file-list
@@ -13,6 +14,7 @@
     event-paths
     make-empty-watcher
     receive-event!
+    receive-event-timeout!
     unwatch-file!
     watch-file!
     watch-file-list

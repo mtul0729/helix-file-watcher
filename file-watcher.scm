@@ -44,25 +44,26 @@
       (thunk))))
 
 (define (loop-events delay-ms)
-  (define next-event (receive-event! global-watcher))
+  (define next-event (receive-event-timeout! global-watcher 200))
   (with-handler
    (lambda (err)
      (log::info! (to-string "err" err))
      (loop-events delay-ms))
-   (define paths (map try-canonicalize-path (event-paths next-event)))
-   (define open-buffers (map try-canonicalize-path (hx.block-on-task (lambda () (all-open-files)))))
-   ;; Lots of allocation!
-   (define intersection
-     (filter (lambda (x) x)
-             (hashset->list (hashset-intersection (list->hashset paths)
-                                                  (list->hashset open-buffers)))))
-   (unless (empty? intersection)
-     (hx.with-context (lambda ()
-                        ;; Give helix like, 5 seconds to make an edit before deciding to update
-                        ;; Enqueue a callback with a delay, without blocking the thread.
-                        (enqueue-thread-local-callback-with-delay
-                         delay-ms
-                         (lambda () (for-each maybe-reload intersection))))))
+   (when next-event
+     (define paths (map try-canonicalize-path (event-paths next-event)))
+     (define open-buffers (map try-canonicalize-path (hx.block-on-task (lambda () (all-open-files)))))
+     ;; Lots of allocation!
+     (define intersection
+       (filter (lambda (x) x)
+               (hashset->list (hashset-intersection (list->hashset paths)
+                                                    (list->hashset open-buffers)))))
+     (unless (empty? intersection)
+       (hx.with-context (lambda ()
+                          ;; Give helix like, 5 seconds to make an edit before deciding to update
+                          ;; Enqueue a callback with a delay, without blocking the thread.
+                          (enqueue-thread-local-callback-with-delay
+                           delay-ms
+                           (lambda () (for-each maybe-reload intersection)))))))
    (loop-events delay-ms)))
 
 (define *started* #f)

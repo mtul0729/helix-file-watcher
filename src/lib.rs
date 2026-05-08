@@ -1,10 +1,11 @@
 use std::{
-    error::Error,
+    io,
     path::{Path, PathBuf},
     sync::{
         Mutex,
-        mpsc::{Receiver, RecvError, Sender},
+        mpsc::{Receiver, RecvTimeoutError},
     },
+    time::Duration,
 };
 
 use abi_stable::std_types::{RBoxError, RResult, RString, RVec};
@@ -23,6 +24,7 @@ fn file_watcher_module() -> FFIModule {
         .register_fn("watch-recursive", watch_recursive)
         .register_fn("watch-file-list", watch_file_list)
         .register_fn("receive-event!", EventReceiver::recv)
+        .register_fn("receive-event-timeout!", EventReceiver::recv_timeout)
         .register_fn("event-paths", NotifyEvent::paths)
         .register_fn("event-kind", NotifyEvent::kind)
         .register_fn("make-empty-watcher", spawn_empty_watcher)
@@ -55,6 +57,25 @@ impl EventReceiver {
         match res {
             Ok(ok) => RResult::ROk(ok),
             Err(err) => RResult::RErr(err),
+        }
+    }
+
+    fn recv_timeout(&mut self, timeout_ms: usize) -> RResult<FFIValue, RBoxError> {
+        let res = self
+            .receiver
+            .lock()
+            .unwrap()
+            .recv_timeout(Duration::from_millis(timeout_ms as u64))
+            .map(NotifyEvent)
+            .map(|x| x.into_ffi_val().unwrap());
+
+        match res {
+            Ok(ok) => RResult::ROk(ok),
+            Err(RecvTimeoutError::Timeout) => RResult::ROk(FFIValue::BoolV(false)),
+            Err(RecvTimeoutError::Disconnected) => RResult::RErr(RBoxError::new(io::Error::new(
+                io::ErrorKind::BrokenPipe,
+                "file watcher event channel disconnected",
+            ))),
         }
     }
 
