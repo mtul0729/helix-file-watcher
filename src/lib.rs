@@ -159,10 +159,13 @@ fn watch_recursive(path: String) -> FFIValue {
 
 fn watch_file_list(paths: Vec<String>) -> FFIValue {
     let (sender, receiver) = std::sync::mpsc::channel();
+    let watched_paths: HashSet<PathBuf> = paths.iter().map(PathBuf::from).collect();
+    let watched_paths_for_events = watched_paths.clone();
 
     let mut watcher = notify::recommended_watcher(move |event: Result<Event, _>| {
-        if let Ok(event) = event {
-            if is_reload_event(&event) {
+        if let Ok(mut event) = event {
+            if is_reload_event(&event) && retain_watched_paths(&mut event, &watched_paths_for_events)
+            {
                 sender.send(event).unwrap();
             }
         }
@@ -170,8 +173,7 @@ fn watch_file_list(paths: Vec<String>) -> FFIValue {
     .unwrap();
 
     let mut watched_dirs = HashSet::new();
-    for path in paths {
-        let path = PathBuf::from(path);
+    for path in watched_paths {
         if let Some(parent) = path.parent() {
             if watched_dirs.insert(parent.to_path_buf()) {
                 watcher.watch(parent, RecursiveMode::NonRecursive).ok();
@@ -192,6 +194,20 @@ fn is_reload_event(event: &Event) -> bool {
         event.kind,
         notify::EventKind::Create(_) | notify::EventKind::Modify(_)
     )
+}
+
+fn retain_watched_paths(event: &mut Event, watched_paths: &HashSet<PathBuf>) -> bool {
+    event
+        .paths
+        .retain(|path| watched_paths.contains(path) || canonicalized_is_watched(path, watched_paths));
+    !event.paths.is_empty()
+}
+
+fn canonicalized_is_watched(path: &PathBuf, watched_paths: &HashSet<PathBuf>) -> bool {
+    match path.canonicalize() {
+        Ok(path) => watched_paths.contains(&path),
+        Err(_) => false,
+    }
 }
 
 pub fn build_module() -> FFIModule {
