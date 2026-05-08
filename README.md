@@ -19,8 +19,14 @@ You should then be able to use the library like so:
 (require "helix-file-watcher/file-watcher.scm")
 ```
 
-To start the watcher on the current directory:
+To start the watcher with the default 2000 ms reload delay:
 
 ```scheme
 (spawn-watcher)
+```
+
+To configure the reload delay, pass it in milliseconds:
+
+```scheme
+(spawn-watcher 1000)
 ```
