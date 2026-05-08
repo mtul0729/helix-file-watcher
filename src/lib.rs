@@ -20,7 +20,8 @@ fn file_watcher_module() -> FFIModule {
     let mut module = FFIModule::new("steel/file-watcher");
 
     module
-        .register_fn("watch-files", watch_files)
+        .register_fn("watch-recursive", watch_recursive)
+        .register_fn("watch-file-list", watch_file_list)
         .register_fn("receive-event!", EventReceiver::recv)
         .register_fn("event-paths", NotifyEvent::paths)
         .register_fn("event-kind", NotifyEvent::kind)
@@ -110,7 +111,7 @@ fn spawn_empty_watcher() -> FFIValue {
     .unwrap()
 }
 
-fn watch_files(path: String) -> FFIValue {
+fn watch_recursive(path: String) -> FFIValue {
     let (sender, receiver) = std::sync::mpsc::channel();
 
     let mut watcher = notify::recommended_watcher(move |event: Result<Event, _>| {
@@ -125,6 +126,32 @@ fn watch_files(path: String) -> FFIValue {
     let path = PathBuf::from(path.clone());
 
     watcher.watch(&path, RecursiveMode::Recursive).unwrap();
+
+    EventReceiver {
+        _watcher: watcher,
+        receiver: Mutex::new(receiver),
+    }
+    .into_ffi_val()
+    .unwrap()
+}
+
+fn watch_file_list(paths: Vec<String>) -> FFIValue {
+    let (sender, receiver) = std::sync::mpsc::channel();
+
+    let mut watcher = notify::recommended_watcher(move |event: Result<Event, _>| {
+        if let Ok(event) = event {
+            if let notify::EventKind::Modify(_) = &event.kind {
+                sender.send(event).unwrap();
+            }
+        }
+    })
+    .unwrap();
+
+    for path in paths {
+        watcher
+            .watch(&PathBuf::from(path), RecursiveMode::NonRecursive)
+            .ok();
+    }
 
     EventReceiver {
         _watcher: watcher,

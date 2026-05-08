@@ -5,7 +5,8 @@
     receive-event!
     unwatch-file!
     watch-file!
-    watch-files
+    watch-file-list
+    watch-recursive
 ))
 (provide 
     event-kind
@@ -14,5 +15,6 @@
     receive-event!
     unwatch-file!
     watch-file!
-    watch-files
+    watch-file-list
+    watch-recursive
 )

@@ -8,7 +8,7 @@
 
 (provide spawn-watcher)
 
-(define global-watcher (make-empty-watcher))
+(define global-watcher (watch-file-list '()))
 
 (define (all-open-files)
   (~>> (editor-all-documents)
@@ -65,22 +65,23 @@
                          (lambda () (for-each maybe-reload intersection))))))
    (loop-events delay-ms)))
 
-(define (set-watch-files paths)
-  (for-each (lambda (x) (watch-file! global-watcher x)) paths))
-
 (define *started* #f)
+
+(define (reset-watcher!)
+  (set! global-watcher (watch-file-list (all-open-files))))
 
 (register-hook! 'document-opened
                 (lambda (_)
                   (when *started*
-                    (set-watch-files (all-open-files)))))
+                    (reset-watcher!))))
 
 ;;@doc
 ;; Spawn a file watcher which will reload
 (define (spawn-watcher [delay-ms 2000])
-  (log::info! (to-string "setting initial watched files"))
-  (set-watch-files (all-open-files))
-  (spawn-native-thread (lambda ()
-                         (set! *started* #t)
-                         (log::info! "starting event loop")
-                         (loop-events delay-ms))))
+  (unless *started*
+    (log::info! "watching open files")
+    (reset-watcher!)
+    (set! *started* #t)
+    (spawn-native-thread (lambda ()
+                           (log::info! "starting event loop")
+                           (loop-events delay-ms)))))
