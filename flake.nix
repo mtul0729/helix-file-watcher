@@ -6,11 +6,21 @@
       url = "github:ipetkov/crane";
     };
 
+    helix = {
+      url = "github:mattwparas/helix/steel-event-system";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
   };
 
   outputs =
-    { self, crane, nixpkgs }:
+    {
+      self,
+      crane,
+      helix,
+      nixpkgs,
+    }:
     let
       systems = [
         "aarch64-linux"
@@ -81,6 +91,7 @@
         system:
         let
           pkgs = nixpkgs.legacyPackages.${system};
+          helixPackage = helix.packages.${system}.default;
         in
         {
           default = pkgs.mkShell {
@@ -91,7 +102,7 @@
               clippy
               rust-analyzer
 
-              helix
+              helixPackage
               zellij
               ripgrep
               util-linux
