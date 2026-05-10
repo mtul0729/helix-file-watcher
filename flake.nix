@@ -76,5 +76,30 @@
           default = helix-file-watcher;
         }
       );
+
+      devShells = forAllSystems (
+        system:
+        let
+          pkgs = nixpkgs.legacyPackages.${system};
+        in
+        {
+          default = pkgs.mkShell {
+            packages = with pkgs; [
+              cargo
+              rustc
+              rustfmt
+              clippy
+              rust-analyzer
+
+              helix
+              zellij
+              ripgrep
+              util-linux
+              procps
+              gawk
+            ];
+          };
+        }
+      );
     };
 }
