@@ -4,7 +4,11 @@
     make-empty-watcher
     receive-event!
     receive-event-timeout!
+    receive-paths!
+    receive-paths-timeout!
+    set-watched-files!
     unwatch-file!
+    watch-controller
     watch-file!
     watch-file-list
     watch-recursive
@@ -15,7 +19,11 @@
     make-empty-watcher
     receive-event!
     receive-event-timeout!
+    receive-paths!
+    receive-paths-timeout!
+    set-watched-files!
     unwatch-file!
+    watch-controller
     watch-file!
     watch-file-list
     watch-recursive

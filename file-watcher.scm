@@ -8,7 +8,8 @@
 
 (provide spawn-watcher)
 
-(define global-watcher (watch-file-list '()))
+(define global-watcher (make-empty-watcher))
+(define global-watcher-controller (watch-controller global-watcher))
 
 (define (all-open-files)
   (~>> (editor-all-documents)
@@ -32,46 +33,51 @@
 ;; reload file only if the write time isn't the same as it is for helix
 (define (maybe-reload x [thunk #f])
   (define doc-id (path->doc-id x))
-  (define helix-doc-last-saved (editor-document-last-saved doc-id))
-  (define file-last-modified (fs-metadata-modified (file-metadata x)))
-  (define now (system-time/now))
+  (when doc-id
+    (define helix-doc-last-saved (editor-document-last-saved doc-id))
+    (define file-last-modified (fs-metadata-modified (file-metadata x)))
+    (define now (system-time/now))
 
-  ;; Racing helix... no good
-  (when (system-time<? helix-doc-last-saved file-last-modified)
-    (log::info! (to-string "reloading file: " x))
-    (editor-document-reload doc-id)
-    (when thunk
-      (thunk))))
+    ;; Racing helix... no good
+    (when (system-time<? helix-doc-last-saved file-last-modified)
+      (log::info! (to-string "reloading file: " x))
+      (editor-document-reload doc-id)
+      (when thunk
+        (thunk)))))
+
+(define (handle-event-paths! delay-ms paths)
+  (unless (empty? paths)
+    ;; Give helix time to finish its own edit before deciding to update.
+    (enqueue-thread-local-callback-with-delay
+     delay-ms
+     (lambda () (for-each maybe-reload paths)))))
 
 (define (loop-events delay-ms)
-  (define next-event (receive-event-timeout! global-watcher 200))
+  (define paths (receive-paths! global-watcher))
   (with-handler
    (lambda (err)
      (log::info! (to-string "err" err))
      (loop-events delay-ms))
-   (when next-event
-     (define paths (map try-canonicalize-path (event-paths next-event)))
-     (define open-buffers (map try-canonicalize-path (hx.block-on-task (lambda () (all-open-files)))))
-     ;; Lots of allocation!
-     (define intersection
-       (filter (lambda (x) x)
-               (hashset->list (hashset-intersection (list->hashset paths)
-                                                    (list->hashset open-buffers)))))
-     (unless (empty? intersection)
-       (hx.with-context (lambda ()
-                          ;; Give helix like, 5 seconds to make an edit before deciding to update
-                          ;; Enqueue a callback with a delay, without blocking the thread.
-                          (enqueue-thread-local-callback-with-delay
-                           delay-ms
-                           (lambda () (for-each maybe-reload intersection)))))))
+   (when paths
+     (hx.with-context (lambda () (handle-event-paths! delay-ms paths))))
    (loop-events delay-ms)))
 
 (define *started* #f)
 
+(define (sync-watcher!)
+  (with-handler (lambda (err)
+                  (log::info! (to-string "failed syncing file watcher: " err)))
+                (set-watched-files! global-watcher-controller (all-open-files))))
+
 (define (reset-watcher!)
-  (set! global-watcher (watch-file-list (all-open-files))))
+  (sync-watcher!))
 
 (register-hook! 'document-opened
+                (lambda (_)
+                  (when *started*
+                    (reset-watcher!))))
+
+(register-hook! 'document-closed
                 (lambda (_)
                   (when *started*
                     (reset-watcher!))))
