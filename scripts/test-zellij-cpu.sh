@@ -9,6 +9,7 @@ zellij_log="$workdir/zellij.typescript"
 layout="$workdir/layout.kdl"
 cpu_samples="$workdir/cpu-samples.tsv"
 cpu_summary="$workdir/cpu-summary.txt"
+max_cpu_percent="${HELIX_FILE_WATCHER_MAX_CPU_PERCENT:-50}"
 
 rm -rf "$workdir"
 mkdir -p "$workdir"
@@ -21,7 +22,7 @@ layout {
             args "-lc" "TERM=xterm-256color RUST_BACKTRACE=1 timeout 10 hx -vvv --log '$hx_log' '$file'"
         }
         pane name="writer" command="bash" {
-            args "-lc" "sleep 2; printf 'first\n' > '$file'; sleep 3; printf 'second\n' > '$file'; sleep 6"
+            args "-lc" "sleep 2; printf 'first\n' > '$file'; sleep 3; rm -f '$file'; sleep 1; printf 'second\n' > '$file'; sleep 6"
         }
     }
 }
@@ -149,7 +150,47 @@ echo "cpu summary:"
 cat "$cpu_summary"
 echo
 echo "interesting hx log lines:"
-rg -n "watching open files|starting event loop|reloading file|Failed canonicalizing|err|panic|Error|init\\.scm|file-watcher|borrowed mutably" "$hx_log" || true
+rg -n "watching open files|starting event loop|reloading file|failed reading file metadata|Failed canonicalizing|err|panic|Error|init\\.scm|file-watcher|borrowed mutably" "$hx_log" || true
 echo
 echo "remaining processes:"
 ps -eo pid,ppid,comm,args --sort=pid | rg 'hx|nixd|zellij|hx-file-watcher-zellij' || true
+
+status=0
+
+if [[ "$zellij_status" -ne 124 ]]; then
+    echo "expected zellij wrapper to exit via timeout status 124, got $zellij_status" >&2
+    status=1
+fi
+
+if [[ ! -s "$hx_log" ]]; then
+    echo "hx log was not created" >&2
+    status=1
+fi
+
+if ! rg -q "reloading file:" "$hx_log"; then
+    echo "hx did not reload the watched file" >&2
+    status=1
+fi
+
+if rg -q "error\\[E08\\]|borrowed mutably|thread '.*' panicked|panic" "$hx_log"; then
+    echo "hx log contains a Steel/runtime failure" >&2
+    status=1
+fi
+
+if rg -q "no hx cpu samples captured" "$cpu_summary"; then
+    echo "no hx cpu samples were captured" >&2
+    status=1
+fi
+
+if ! awk -F= -v max_allowed="$max_cpu_percent" '
+    $1 == "overall_max_cpu_percent" {
+        found = 1
+        if (($2 + 0) > max_allowed) exit 1
+    }
+    END { exit found ? 0 : 1 }
+' "$cpu_summary"; then
+    echo "hx CPU exceeded ${max_cpu_percent}% or no max CPU sample was recorded" >&2
+    status=1
+fi
+
+exit "$status"

@@ -30,16 +30,22 @@
 
   (if (= (length paths) 1) (car paths) #f))
 
+(define (try-file-last-modified x)
+  (with-handler (lambda (err)
+                  (log::info! (to-string "failed reading file metadata: " x err))
+                  #f)
+                (fs-metadata-modified (file-metadata x))))
+
 ;; reload file only if the write time isn't the same as it is for helix
 (define (maybe-reload x [thunk #f])
   (define doc-id (path->doc-id x))
   (when doc-id
     (define helix-doc-last-saved (editor-document-last-saved doc-id))
-    (define file-last-modified (fs-metadata-modified (file-metadata x)))
-    (define now (system-time/now))
+    (define file-last-modified (try-file-last-modified x))
 
     ;; Racing helix... no good
-    (when (system-time<? helix-doc-last-saved file-last-modified)
+    (when (and file-last-modified
+               (system-time<? helix-doc-last-saved file-last-modified))
       (log::info! (to-string "reloading file: " x))
       (editor-document-reload doc-id)
       (when thunk
