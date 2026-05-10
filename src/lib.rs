@@ -166,7 +166,7 @@ fn spawn_empty_watcher() -> FFIValue {
 
     let watcher = notify::recommended_watcher(move |event: Result<Event, _>| {
         if let Ok(mut event) = event {
-            if is_reload_event(&event)
+            if is_watched_file_event(&event)
                 && retain_watched_paths(&mut event, &watched_paths_for_events.lock().unwrap())
             {
                 let _ = sender.send(event);
@@ -187,10 +187,10 @@ fn spawn_empty_watcher() -> FFIValue {
     .unwrap()
 }
 
-fn is_reload_event(event: &Event) -> bool {
+fn is_watched_file_event(event: &Event) -> bool {
     matches!(
         event.kind,
-        notify::EventKind::Create(_) | notify::EventKind::Modify(_)
+        notify::EventKind::Create(_) | notify::EventKind::Modify(_) | notify::EventKind::Remove(_)
     )
 }
 

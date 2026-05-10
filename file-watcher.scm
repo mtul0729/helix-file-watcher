@@ -30,11 +30,19 @@
 
   (if (= (length paths) 1) (car paths) #f))
 
+(define (focused-document? doc-id)
+  (equal? doc-id (editor->doc-id (editor-focus))))
+
 (define (try-file-last-modified x)
   (with-handler (lambda (err)
                   (log::info! (to-string "failed reading file metadata: " x err))
                   #f)
                 (fs-metadata-modified (file-metadata x))))
+
+(define (handle-missing-file x doc-id)
+  (log::info! (to-string "watched file unavailable: " x))
+  (when (focused-document? doc-id)
+    (set-warning! (to-string "Watched file unavailable: " x))))
 
 ;; reload file only if the write time isn't the same as it is for helix
 (define (maybe-reload x [thunk #f])
@@ -49,7 +57,9 @@
       (log::info! (to-string "reloading file: " x))
       (editor-document-reload doc-id)
       (when thunk
-        (thunk)))))
+        (thunk)))
+    (unless file-last-modified
+      (handle-missing-file x doc-id))))
 
 (define (handle-event-paths! delay-ms paths)
   (unless (empty? paths)

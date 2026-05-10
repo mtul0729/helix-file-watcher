@@ -25,7 +25,7 @@ layout {
             args "-lc" "TERM=xterm-256color RUST_BACKTRACE=1 timeout 10 hx -vvv --log '$hx_log' '$file'"
         }
         pane name="writer" command="bash" {
-            args "-lc" "sleep 2; printf 'first\n' > '$file'; sleep 3; rm -f '$file'; sleep 1; printf 'second\n' > '$file'; sleep 6"
+            args "-lc" "sleep 2; printf 'first\n' > '$file'; sleep 3; rm -f '$file'; sleep 3; printf 'second\n' > '$file'; sleep 6"
         }
     }
 }
@@ -153,7 +153,7 @@ echo "cpu summary:"
 cat "$cpu_summary"
 echo
 echo "interesting hx log lines:"
-rg -n "watching open files|starting event loop|reloading file|failed reading file metadata|Failed canonicalizing|err|panic|Error|init\\.scm|file-watcher|borrowed mutably" "$hx_log" || true
+rg -n "watching open files|starting event loop|reloading file|watched file unavailable|failed reading file metadata|Failed canonicalizing|err|panic|Error|init\\.scm|file-watcher|borrowed mutably" "$hx_log" || true
 echo
 echo "remaining processes:"
 ps -eo pid,ppid,comm,args --sort=pid | rg 'hx|nixd|zellij|hx-file-watcher-zellij' || true
@@ -172,6 +172,11 @@ fi
 
 if ! rg -q "reloading file:" "$hx_log"; then
     echo "hx did not reload the watched file" >&2
+    status=1
+fi
+
+if ! rg -q "watched file unavailable:" "$hx_log"; then
+    echo "hx did not report the watched file as unavailable after deletion" >&2
     status=1
 fi
 
