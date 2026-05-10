@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Manual system-level smoke test. This intentionally depends on a real Linux
+# terminal/session stack and is not meant for default CI jobs; see README.md.
+
 session="hx-file-watcher-test-$$"
 workdir="${HELIX_FILE_WATCHER_TEST_DIR:-/tmp/hx-file-watcher-zellij}"
 file="$workdir/watched.txt"
